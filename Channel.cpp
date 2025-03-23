@@ -33,7 +33,7 @@ std::string Channel::getMembersList() {
     }
     // Если список не пуст, удаляем последний лишний пробел.
     if (!membersList.empty()) {
-        membersList.pop_back(); // Убираем лишний пробел в конце
+        membersList.erase(membersList.size() - 1); // Убираем лишний пробел в конце
     }
     return membersList;
 }
