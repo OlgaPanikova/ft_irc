@@ -17,6 +17,10 @@
 #include <fcntl.h>
 #include "Client.hpp"
 #include "Channel.hpp"
+#include <cstdio>
+#include <cerrno>
+#include <algorithm>
+
 
 class Client;
 class Channel;

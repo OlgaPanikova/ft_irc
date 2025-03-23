@@ -6,7 +6,7 @@ ChatServer::ChatServer(int port, const std::string &password)
     // Создание TCP-сокета.
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        perror("Socket failed");
+        std::perror("Socket failed");
         exit(1);
     }
 
@@ -179,8 +179,8 @@ void ChatServer::handleClientMessage(int client_fd) {
         // Удаляем обработанную часть из буфера
         client.clearBuffer(pos);
         // Если сообщение заканчивается символом '\r', удаляем его
-        if (!message.empty() && message.back() == '\r') {
-            message.pop_back();
+        if (!message.empty() && message[message.size() - 1] == '\r') {
+            message.erase(message.size() - 1);
         }
         // Обрабатываем извлечённое сообщение
         processCompleteMessage(client_fd, message);
