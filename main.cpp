@@ -9,8 +9,7 @@ int main(int argc, char *argv[]) {
 
 	errno = 0;
 	char *end;
-    // int port = std::stoi(argv[1]);  // Преобразуем строку в целое число для порта
-	long result = std::strtol(argv[1], &end, 10); // Преобразуем строку в целое число для порта
+	long result = std::strtol(argv[1], &end, 10);
 
 	if (errno == ERANGE || result > INT_MAX || result < 1024)
 	{
@@ -26,9 +25,9 @@ int main(int argc, char *argv[]) {
 
 	int port = static_cast<int>(result);
 
-    std::string password = argv[2];  // Пароль
+    std::string password = argv[2];
 
-    ChatServer server(port, password);  // Создаем объект ChatServer с портом и паролем
+    ChatServer server(port, password);
     server.run();
 
     return 0;

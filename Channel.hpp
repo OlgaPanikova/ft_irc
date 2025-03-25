@@ -14,14 +14,14 @@ class ChatServer;
 class Channel {
 public:
     std::string name;
-    std::set<int> members; // Список клиентов (fd)
+    std::set<int> members;
     std::set<std::string> invitedUsers;
     std::set<int> operators;
     std::map<int, std::string> memberNicknames;
     std::map<int, std::string> memberUsernames;
     std::string topic;
     std::string channelKey;
-    int operator_fd; // Оператор канала
+    int operator_fd;
     int userLimit;
     bool topicRestricted;
     bool inviteOnly;

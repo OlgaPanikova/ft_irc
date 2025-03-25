@@ -1,11 +1,8 @@
 #include "ChatServer.hpp"
 
-// Обработка команды JOIN: присоединение клиента к каналу.
-// Извлекает имя канала и, при необходимости, ключ, затем проверяет условия (invite-only, лимит, пароль)
-// и добавляет клиента в канал, отправляя соответствующие уведомления.
 void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
     std::string channelName, key;
-    iss >> channelName >> key;  // Читаем имя канала и возможный ключ (пароль)
+    iss >> channelName >> key;
 
     if (channelName.empty()) {
         std::string errorMsg = ":irc.localhost 461 " + clients[client_fd].getNickname() +
@@ -14,7 +11,6 @@ void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Если имя канала не начинается с '#', добавляем его.
     if (channelName[0] != '#') {
         channelName = "#" + channelName;
     }
@@ -22,13 +18,11 @@ void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
     bool isNewChannel = (channels.find(channelName) == channels.end());
 
     if (isNewChannel) {
-        // Создаем новый канал.
         channels.insert(std::make_pair(channelName, Channel(channelName)));
         std::cout << "Created new channel: " << channelName << std::endl;
     } else {
         Channel &chan = channels[channelName];
 
-        // Проверяем invite-only режим.
         if (chan.isInviteOnly() && !chan.isInvited(clients[client_fd].getNickname())) {
             std::string errorMsg = ":irc.localhost 473 " + clients[client_fd].getNickname() +
                                    " " + channelName + " :Cannot join: Invite-only channel\r\n";
@@ -36,7 +30,6 @@ void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
             return;
         }
 
-        // Проверяем лимит участников канала.
         if (chan.getUserLimit() > 0 && chan.getMemberCount() >= chan.getUserLimit()) {
             std::string errorMsg = ":irc.localhost 471 " + clients[client_fd].getNickname() +
                                    " " + channelName + " :Cannot join: Channel is full\r\n";
@@ -44,7 +37,6 @@ void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
             return;
         }
 
-        // Проверяем, если канал защищен паролем, совпадает ли он с указанным.
         if (!chan.getChannelKey().empty() && chan.getChannelKey() != key) {
             std::string errorMsg = ":irc.localhost 475 " + clients[client_fd].getNickname() +
                                    " " + channelName + " :Cannot join: Incorrect channel key\r\n";
@@ -53,7 +45,6 @@ void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
         }
     }
 
-    // Проверяем, что у клиента установлен ник и юзернейм.
     std::string nickname = clients[client_fd].getNickname();
     if (nickname.empty()) {
         send(client_fd, "You must set a nickname before joining a channel.\r\n", 50, 0);
@@ -65,27 +56,22 @@ void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Добавляем клиента в канал и обновляем его текущий канал.
     channels[channelName].addMember(client_fd, nickname, username);
     clients[client_fd].setCurrentChannel(channelName);
 
-    // Если канал новый, назначаем клиента оператором.
     if (isNewChannel) {
         channels[channelName].makeOperator(client_fd);
         std::string response = "You are now the channel operator.\r\n";
         send(client_fd, response.c_str(), response.size(), 0);
     }
 
-    // Отправляем подтверждение присоединения.
     std::string response = "Joined " + channelName + "\n";
     send(client_fd, response.c_str(), response.size(), 0);
     std::cout << "User " << client_fd << " joined channel: " << channelName << std::endl;
 
-    // Рассылаем сообщение о входе в канал всем его участникам.
     std::string joinMsg = ":" + nickname + "!" + username + "@localhost JOIN " + channelName + "\r\n";
     channels[channelName].broadcast(joinMsg);
 
-    // Отправляем тему канала.
     std::string topic = channels[channelName].getTopic();
     std::string topicMsg;
     if (!topic.empty()) {
@@ -95,26 +81,21 @@ void ChatServer::processJoinCommand(int client_fd, std::istringstream &iss) {
     }
     send(client_fd, topicMsg.c_str(), topicMsg.size(), 0);
 
-    // Отправляем список пользователей в канале.
     std::string namesList = ":irc.localhost 353 " + nickname + " = " + channelName + " :";
     namesList += channels[channelName].getMembersList();
     namesList += "\r\n";
     send(client_fd, namesList.c_str(), namesList.size(), 0);
 
-    // Отправляем окончание списка пользователей.
     std::string endNames = ":irc.localhost 366 " + nickname + " " + channelName + " :End of /NAMES list\r\n";
     send(client_fd, endNames.c_str(), endNames.size(), 0);
 }
 
 
-// Обработка команды PRIVMSG: отправка личного сообщения или сообщения в канал.
-// Если цель начинается с '#' или '&', сообщение отправляется в канал; иначе – как личное сообщение.
 void ChatServer::processPrivMsgCommand(int client_fd, std::istringstream &iss) {
     std::string target, msg;
-    iss >> target;              // Читаем цель: канал или ник.
-    std::getline(iss, msg);     // Читаем остаток строки как сообщение.
+    iss >> target;
+    std::getline(iss, msg);
 
-    // Удаляем ведущие пробелы и символ ':' из начала сообщения.
     while (!msg.empty() && (msg[0] == ' ' || msg[0] == ':')) {
         msg.erase(0, 1);
     }
@@ -129,7 +110,6 @@ void ChatServer::processPrivMsgCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Если цель является каналом.
     if (target[0] == '#' || target[0] == '&') {
         if (channels.find(target) != channels.end()) {
             if (!channels[target].isMember(client_fd)) {
@@ -145,7 +125,6 @@ void ChatServer::processPrivMsgCommand(int client_fd, std::istringstream &iss) {
             send(client_fd, errorMsg.c_str(), errorMsg.size(), 0);
         }
     }
-    // Если цель – личное сообщение.
     else {
         int recipientFd = getFdByNickname(target);
         if (recipientFd == -1) {
@@ -162,7 +141,6 @@ void ChatServer::processPrivMsgCommand(int client_fd, std::istringstream &iss) {
     }
 }
 
-// Обработка команды KICK: исключение пользователя из канала.
 void ChatServer::processKickCommand(int client_fd, std::istringstream &iss) {
     std::string channel, target;
     iss >> channel >> target;
@@ -191,7 +169,6 @@ void ChatServer::processKickCommand(int client_fd, std::istringstream &iss) {
 
     Channel &chan = channels[channel];
 
-    // Проверяем, является ли отправитель оператором канала.
     if (!chan.isOperator(client_fd)) {
         std::string errorMsg = ":irc.localhost 482 " + client.getNickname() +
                                " " + channel + " :You're not channel operator\r\n";
@@ -199,7 +176,6 @@ void ChatServer::processKickCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Ищем файловый дескриптор целевого пользователя по нику.
     int target_fd = -1;
     for (std::map<int, Client>::iterator it = clients.begin(); it != clients.end(); ++it) {
         if (it->second.getNickname() == target) {
@@ -215,8 +191,7 @@ void ChatServer::processKickCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Формируем сообщение о кике и рассылаем его участникам канала.
-    std::string comment = target; // Комментарий можно расширить при необходимости.
+    std::string comment = target;
     std::string kickMessage = ":" + client.getNickname() + "!" + client.getUsername() + "@localhost" +
                           " KICK " + channel + " " + target + " :Kicked by operator\r\n";
     chan.broadcast(kickMessage);
@@ -224,7 +199,6 @@ void ChatServer::processKickCommand(int client_fd, std::istringstream &iss) {
 }
 
 
-// Обработка команды INVITE: приглашение пользователя в канал.
 void ChatServer::processInviteCommand(int client_fd, std::istringstream &iss) {
     std::string target, channel;
     iss >> target >> channel;
@@ -275,7 +249,6 @@ void ChatServer::processInviteCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Добавляем пользователя в список приглашенных, если такая логика реализована.
     chan.inviteUser(target);
 
     std::string operPrefix = ":" + client.getNickname() + "!" + client.getUsername() + "@localhost";
@@ -288,7 +261,6 @@ void ChatServer::processInviteCommand(int client_fd, std::istringstream &iss) {
 }
 
 
-// Обработка команды TOPIC: получение или установка темы канала.
 void ChatServer::processTopicCommand(int client_fd, std::istringstream &iss) {
     std::string channel;
     iss >> channel;
@@ -332,7 +304,6 @@ void ChatServer::processTopicCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Читаем оставшийся текст как новую тему.
     std::string rest;
     std::getline(iss, rest);
     size_t firstChar = rest.find_first_not_of(" ");
@@ -344,7 +315,6 @@ void ChatServer::processTopicCommand(int client_fd, std::istringstream &iss) {
     }
     std::string topic = rest;
 
-    // Если тема ограничена и клиент не оператор, отправляем ошибку.
     if (chan.isTopicRestricted() && !chan.isOperator(client_fd)) {
         std::string errorMsg = ":irc.localhost 482 " + client.getNickname() +
                                " " + channel + " :You're not channel operator\r\n";
@@ -352,7 +322,6 @@ void ChatServer::processTopicCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Устанавливаем новую тему и рассылаем уведомление участникам канала.
     chan.setTopic(topic);
     std::string notification = ":" + client.getNickname() + "!" +
                                client.getUsername() + "@localhost TOPIC " +
@@ -361,8 +330,6 @@ void ChatServer::processTopicCommand(int client_fd, std::istringstream &iss) {
 }
 
 
-// Обработка команды MODE: изменение режима канала.
-// Читает имя канала, режим и дополнительные параметры, проверяет полномочия и применяет изменения.
 void ChatServer::processModeCommand(int client_fd, std::istringstream &iss) {
     std::string channel, mode, param;
     iss >> channel >> mode >> param;
@@ -396,21 +363,16 @@ void ChatServer::processModeCommand(int client_fd, std::istringstream &iss) {
         return;
     }
 
-    // Применяем изменение режима.
     channels[channel].setMode(mode, param, client_fd);
 }
 
-
-// Обработка команды PART: выход клиента из канала.
-// Извлекает имя канала и, возможно, сообщение о выходе, удаляет клиента из канала и рассылает уведомление.
 void ChatServer::processPartCommand(int client_fd, std::istringstream &iss) {
     std::string channel;
     std::string partMessage;
     
-    iss >> channel;               // Читаем имя канала.
-    std::getline(iss, partMessage); // Читаем оставшийся текст как сообщение о выходе.
+    iss >> channel;
+    std::getline(iss, partMessage);
     
-    // Удаляем ведущие пробелы и символы ':'.
     while (!partMessage.empty() && (partMessage[0] == ' ' || partMessage[0] == ':')) {
         partMessage.erase(0, 1);
     }
@@ -445,7 +407,6 @@ void ChatServer::processPartCommand(int client_fd, std::istringstream &iss) {
         return;
     }
     
-    // Формируем уведомление о выходе.
     std::string senderPrefix = ":" + client.getNickname() + "!" + client.getUsername() + "@localhost";
     std::string notification = senderPrefix + " PART " + channel;
     if (!partMessage.empty()) {
@@ -453,51 +414,39 @@ void ChatServer::processPartCommand(int client_fd, std::istringstream &iss) {
     }
     notification += "\r\n";
     
-    // Удаляем клиента из канала и оповещаем участников.
     chan.removeMember(client_fd);
     chan.broadcast(notification);
 }
 
-// Обработка команды NOTICE: отправка уведомления получателю (либо в канал, либо лично).
-// В отличие от PRIVMSG, сервер не должен генерировать автоматические ответы на NOTICE.
+
 void ChatServer::processNoticeCommand(int client_fd, std::istringstream &iss) {
     std::string target, msg;
-    // Читаем цель (канал или ник)
     iss >> target;
-    // Читаем оставшуюся часть строки как сообщение
     std::getline(iss, msg);
     
-    // Убираем ведущие пробелы и символ ':' из начала сообщения
     while (!msg.empty() && (msg[0] == ' ' || msg[0] == ':')) {
         msg.erase(0, 1);
     }
     
     // Отладочная информация (необязательно)
-    std::cout << "NOTICE received - Target: '" << target << "', Message: '" << msg << "'" << std::endl;
+    // std::cout << "NOTICE received - Target: '" << target << "', Message: '" << msg << "'" << std::endl;
     
     Client &client = clients[client_fd];
     
-    // Если цель или сообщение отсутствуют, можно либо ничего не делать, либо отправить ошибку.
-    // Обычно для NOTICE сервер не отправляет автоматических ответов, поэтому можно просто выйти.
     if (target.empty() || msg.empty()) {
         // Можно залогировать ошибку, но не отправлять ответ клиенту.
         std::cerr << "NOTICE: Not enough parameters from " << client.getNickname() << std::endl;
         return;
     }
     
-    // Если цель начинается с '#' или '&' – это канал
     if (target[0] == '#' || target[0] == '&') {
-        // Проверяем, существует ли канал
         if (channels.find(target) != channels.end()) {
-            // (Опционально) Если требуется, можно проверить, является ли клиент участником канала.
             if (!channels[target].isMember(client_fd)) {
                 // Обычно для NOTICE ошибки не отправляются, но можно записать в лог.
                 std::cerr << "NOTICE: Client " << client.getNickname() << " not member of channel " << target << std::endl;
                 return;
             }
-            // Формируем префикс отправителя
             std::string senderPrefix = ":" + client.getNickname() + "!" + client.getUsername() + "@localhost";
-            // Формируем уведомление NOTICE и рассылаем его участникам канала
             std::string noticeMessage = senderPrefix + " NOTICE " + target + " :" + msg + "\r\n";
             channels[target].broadcast(noticeMessage);
         } else {
@@ -505,7 +454,6 @@ void ChatServer::processNoticeCommand(int client_fd, std::istringstream &iss) {
             std::cerr << "NOTICE: No such channel " << target << std::endl;
         }
     }
-    // Иначе – цель считается ником для личного уведомления
     else {
         int recipientFd = getFdByNickname(target);
         if (recipientFd == -1) {
@@ -519,14 +467,10 @@ void ChatServer::processNoticeCommand(int client_fd, std::istringstream &iss) {
     }
 }
 
-// Обработка команды QUIT: клиент отправляет сообщение о выходе, и сервер
-// уведомляет все каналы, в которых клиент участвует, о его отключении, затем закрывает соединение.
 void ChatServer::processQuitCommand(int client_fd, std::istringstream &iss) {
-    // Извлекаем оставшуюся часть строки как сообщение QUIT (например, причина ухода)
     std::string quitMessage;
     std::getline(iss, quitMessage);
     
-    // Если есть лишние пробелы или двоеточие в начале, удаляем их
     if (!quitMessage.empty()) {
         if (quitMessage[0] == ' ')
             quitMessage.erase(0, 1);
@@ -534,22 +478,16 @@ void ChatServer::processQuitCommand(int client_fd, std::istringstream &iss) {
             quitMessage.erase(0, 1);
     }
     
-    // Получаем объект клиента по его файловому дескриптору
     Client &client = clients[client_fd];
     
-    // Формируем префикс отправителя в формате :<nick>!<username>@localhost
     std::string senderPrefix = ":" + client.getNickname() + "!" + client.getUsername() + "@localhost";
     
-    // Формируем строку уведомления QUIT. Если есть сообщение, добавляем его.
     std::string broadcastMessage = senderPrefix + " QUIT";
     if (!quitMessage.empty()) {
         broadcastMessage += " :" + quitMessage;
     }
     broadcastMessage += "\r\n";
     
-    // Для каждого канала, где клиент является участником,
-    // рассылаем уведомление об отключении и удаляем клиента из списка участников канала.
-    // Используем итератор вместо range-based for (C++98 стиль).
     for (std::map<std::string, Channel>::iterator it = channels.begin(); it != channels.end(); ++it) {
         Channel &chan = it->second;
         if (chan.isMember(client_fd)) {
@@ -558,9 +496,7 @@ void ChatServer::processQuitCommand(int client_fd, std::istringstream &iss) {
         }
     }
     
-    // Выводим информацию о завершении соединения в консоль для отладки.
     std::cout << "Client " << client.getNickname() << " quit: " << quitMessage << std::endl;
     
-    // Отключаем клиента: закрываем его сокет и удаляем его из списка активных клиентов.
     handleClientDisconnect(client_fd);
 }

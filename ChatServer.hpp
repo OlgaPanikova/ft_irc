@@ -58,8 +58,6 @@ private:
     int getFdByNickname(const std::string &nick);
 
 
-    // void sendMessageToAllClients(int sender_fd, const std::string &message);
-
 public:
     ChatServer(int port, const std::string &password);
     ~ChatServer();
